@@ -3,3 +3,4 @@ openai
 requests
 twilio
 cloudinary
+python-dotenv

@@ -6,10 +6,10 @@ from flask import Flask, request
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
 import os
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 
 # ===== CARGAR VARIABLES DE ENTORNO =====
-load_dotenv()
+# load_dotenv()
 
 # ===== CONFIGURACIÓN DE CLAVES =====
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
