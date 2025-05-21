@@ -41,6 +41,31 @@ Mentolex ambienta y refresca espacios con su fragancia a base de menta, eucalipt
 Dolox es un aliado natural para el bienestar muscular, que alivia tensiones antes y después de la actividad física. 
 Olormax Talco Desodorante para Pies y Cuerpo refresca y mantiene la sensación de limpieza en todo el cuerpo de manera duradera. 
 Responde de forma profesional, breve y precisa, limitándote únicamente a lo que pregunte el usuario.
+¿Qué es el dengue?
+El dengue es una enfermedad viral transmitida por la picadura del mosquito Aedes aegypti, común
+en zonas tropicales y subtropicales. Hay cuatro serotipos del virus (DENV-1 al DENV-4).
+Síntomas principales
+- Fiebre alta repentina
+- Dolor intenso de cabeza, detrás de los ojos
+- Dolores musculares y articulares (fiebre quebrantahuesos)
+- Náuseas, vómito
+- Sarpullido
+- Sangrado leve (encías, nariz)
+¿Cómo prevenir el dengue?
+1. Eliminar criaderos de mosquitos
+- Vacía, voltea o tapa recipientes que acumulen agua.
+- Cambia el agua de floreros y bebederos cada 2-3 días.
+- Limpia canaletas y desagües.
+2. Proteger tu casa
+- Usa mosquiteros en ventanas y puertas.
+- Coloca mallas en cunas y camas.
+- Aplica insecticidas en zonas donde se esconden los mosquitos.
+3. Proteger tu cuerpo
+- Usa repelente con DEET, icaridina o IR3535.
+- Viste ropa clara, de manga larga y pantalones largos.
+4. Vacunación (en algunos casos)
+Existen vacunas como Qdenga, pero solo están indicadas para personas que ya han tenido
+dengue. Consulta con un médico.
 """
 
 # ===== FLASK APP =====
