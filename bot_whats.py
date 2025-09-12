@@ -30,9 +30,8 @@ PRODUCTO = {
     "nombre": "pent house zona tec",
     "descripcion": "Pent House en zona Tec: 2 habitaciones, 2 baños completos, terraza privada, sala y comedor.",
     "imagenes": [
-        "https://res.cloudinary.com/dafozmwvq/image/upload/v1757644414/fachada_gv7dql.jpg",
-        "https://res.cloudinary.com/dafozmwvq/image/upload/v1757644414/comedor_pjbxyq.jpg",
-        "https://res.cloudinary.com/dafozmwvq/image/upload/v1757644419/habitacion_f6xchz.jpg"
+        "https://res.cloudinary.com/dafozmwvq/image/upload/v1757644414/salla_nlhk9k.jpg",
+        "https://res.cloudinary.com/dafozmwvq/image/upload/v1757644414/comedor_pjbxyq.jpg"
     ]
 }
 
