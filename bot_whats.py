@@ -16,33 +16,32 @@ TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
 TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER")  # 'whatsapp:+1415...'
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-# ============== PROMPT ==============
+# ===== PROMPT (refinado) =====
 PROMPT = """
-Eres un asistente inmobiliario digital de COINSA (SOFOM ENR, NL). Sé claro, cordial y breve (máx. 50 palabras).  
-Actualmente tenemos disponible un Pent House en la zona Tec: 2 habitaciones, 2 baños completos, terraza privada, sala y comedor.  
-Tu objetivo es:  
-1) Presentar esta propiedad como oportunidad destacada.  
-2) Si el usuario pide más detalles, ofrece descripción adicional o fotos.  
-3) Motivar al usuario a agendar una visita. Para ello, pide nombre y correo electrónico, recordándole que el teléfono es el de este chat.  
-4) Termina la interacción con un tono amable, transmitiendo confianza y disposición.  
-Contacto directo: 812 612 3414 · info@fcoinsa.com.mx
+Eres un asistente inmobiliario digital de COINSA (SOFOM ENR, NL). Sé claro, amable y breve (máx. 50 palabras).
+Flujo de conversación:
+- Si el usuario saluda, responde con un saludo y pregunta en qué puedes ayudar (no presentes la propiedad todavía).
+- Cuando pidan detalles, presenta el Pent House en zona Tec: 2 habitaciones, 2 baños completos, terraza privada, sala y comedor.
+- Si piden fotos, puedes enviarlas, pero prioriza invitar a agendar visita cuando notes interés. Para agendar, solicita nombre y correo; el teléfono es el de este chat.
+- Mantén tono profesional y cercano. Evita pegar bloques de contacto salvo que explícitamente lo pidan.
 """
 
-# ============== PRODUCTO ==============
+# ===== PRODUCTO =====
 PRODUCTO = {
     "nombre": "pent house zona tec",
     "descripcion": "Pent House en zona Tec: 2 habitaciones, 2 baños completos, terraza privada, sala y comedor.",
     "imagenes": [
-        "https://res.cloudinary.com/dafozmwvq/image/upload/v1757644414/salla_nlhk9k.jpg",
-        "https://res.cloudinary.com/dafozmwvq/image/upload/v1757644414/comedor_pjbxyq.jpg"
+        "https://res.cloudinary.com/dafozmwvq/image/upload/v1757644414/fachada_gv7dql.jpg",
+        "https://res.cloudinary.com/dafozmwvq/image/upload/v1757644414/comedor_pjbxyq.jpg",
+        "https://res.cloudinary.com/dafozmwvq/image/upload/v1757644419/habitacion_f6xchz.jpg"
     ]
 }
 
-# ============== SESIONES (RAM; usa Redis en prod) ==============
+# ===== SESIONES (RAM; usa Redis/DB en prod) =====
 # stage: idle | ask_name | ask_email | ask_when | closed
-SESSIONS = {}  # { from: {stage,name,email,ready_to_notify}}
+SESSIONS = {}  # { from_number: {stage, name, email, ready_to_notify}}
 
-# ============== HELPERS ==============
+# ===== HELPERS =====
 def get_ai_reply(user_message: str) -> str:
     try:
         r = openai.chat.completions.create(
@@ -67,50 +66,43 @@ def enviar_texto(to_number: str, body: str):
 def enviar_texto_con_imagenes_album(to_number: str, body: str, media_urls):
     """
     Intenta enviar varias imágenes en UN mensaje (media_url=[...]).
-    Si solo te rinde una (sandbox caprichoso), manda las restantes en mensajes separados.
+    Si falla, hace fallback y manda las restantes en mensajes separados.
     """
     if not isinstance(media_urls, list):
         media_urls = [media_urls]
-
-    # Primer intento: todas en un solo mensaje
     try:
         msg = twilio_client.messages.create(
             from_=TWILIO_WHATSAPP_NUMBER,
             to=to_number,
             body=body,
-            media_url=media_urls  # WhatsApp soporta hasta ~10
+            media_url=media_urls
         )
-        print(f"✅ Álbum en un solo mensaje SID={msg.sid} (n={len(media_urls)})")
+        print(f"✅ Álbum único SID={msg.sid} (n={len(media_urls)})")
         return
     except Exception as e:
-        print(f"⚠️ Falló álbum único, haré fallback en secuencia: {e}")
-
-    # Fallback: primera con caption, resto sin texto
+        print(f"⚠️ Álbum único falló; envío secuencial: {e}")
+    # Fallback
     try:
         first = media_urls[0]
         msg1 = twilio_client.messages.create(
-            from_=TWILIO_WHATSAPP_NUMBER,
-            to=to_number,
-            body=body,
-            media_url=[first]
+            from_=TWILIO_WHATSAPP_NUMBER, to=to_number, body=body, media_url=[first]
         )
         print(f"✅ Primera imagen SID={msg1.sid}")
-        sleep(0.6)
+        from time import sleep; sleep(0.6)
         for u in media_urls[1:]:
             msgn = twilio_client.messages.create(
-                from_=TWILIO_WHATSAPP_NUMBER,
-                to=to_number,
-                media_url=[u]
+                from_=TWILIO_WHATSAPP_NUMBER, to=to_number, media_url=[u]
             )
             print(f"✅ Imagen extra SID={msgn.sid}")
             sleep(0.6)
     except Exception as e2:
-        print(f"❌ Fallback de álbum también falló: {e2}")
+        print(f"❌ Fallback álbum falló: {e2}")
 
 def extract_phone(whatsapp_from: str) -> str:
     return whatsapp_from.replace("whatsapp:", "") if whatsapp_from else ""
 
 def looks_like_email(text: str) -> bool:
+    import re
     return bool(re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text))
 
 def want_photos(text: str) -> bool:
@@ -123,21 +115,23 @@ def want_visit(text: str) -> bool:
     triggers = ["agendar", "agenda", "visita", "cita", "tour", "recorrido", "verlo", "ver la propiedad", "quiero ver"]
     return any(k in t for k in triggers)
 
-# Hook para cuando el lead quede listo para notificar al asesor (SendGrid va aquí luego)
+def is_greeting(text: str) -> bool:
+    t = text.strip().lower()
+    return any(t.startswith(x) for x in ["hola", "buenas", "buen día", "buen dia", "hey", "holi"]) or t in {"hi","hello","saludos"}
+
+# Hook para integrar SendGrid cuando cierres el lead
 def on_lead_ready(nombre: str, email: str, phone: str):
-    print(f"🔔 Lead listo: {nombre} | {email} | {phone}  (aquí dispararás SendGrid)")
+    print(f"🔔 Lead listo: {nombre} | {email} | {phone}  (aquí mandarás el correo con SendGrid)")
 
 def ensure_session(num: str):
     return SESSIONS.setdefault(num, {"stage":"idle","name":None,"email":None,"ready_to_notify":False})
 
-# =================================================================
-# STATE MACHINE DE AGENDA
-# =================================================================
+# ===== STATE MACHINE: agendar visita =====
 def handle_visit_flow(from_number: str, user_message: str, phone: str) -> bool:
+    import re
     s = ensure_session(from_number)
 
-    # inicio explícito
-    if s["stage"] in ("idle",) and want_visit(user_message):
+    if s["stage"] == "idle" and want_visit(user_message):
         s["stage"] = "ask_name"
         enviar_texto(from_number, "Excelente. Para agendar la visita, ¿me compartes tu nombre completo?")
         return True
@@ -166,21 +160,18 @@ def handle_visit_flow(from_number: str, user_message: str, phone: str) -> bool:
         return True
 
     if s["stage"] == "ask_when":
-        # Cualquier respuesta cierra el flujo. Si quieres, aquí podrías parsear día/hora.
         s["stage"] = "closed"
         s["ready_to_notify"] = True
         enviar_texto(from_number, "Excelente, un asesor se pondrá en contacto contigo para coordinar la visita.")
-        # Trigger para notificar (cuando integres SendGrid, llama aquí)
         on_lead_ready(s["name"], s["email"], phone)
         return True
 
-    # Si ya cerró, no seguimos molestando
     if s["stage"] == "closed":
         return True
 
     return False
 
-# ============== FLASK ==============
+# ===== FLASK =====
 app = Flask(__name__)
 
 @app.route("/whatsapp", methods=["POST"])
@@ -191,13 +182,19 @@ def whatsapp_bot():
 
     print(f"📩 {from_number}: {user_message}")
 
-    # 1) Fotos del producto (intenta álbum; si no, secuencia)
-    if want_photos(user_message):
-        caption = f"{PRODUCTO['descripcion']}\n\nContacto: 812 612 3414 · info@fcoinsa.com.mx"
-        enviar_texto_con_imagenes_album(from_number, caption, PRODUCTO["imagenes"])
+    # 0) Saludo inicial -> solo pregunta cómo ayudar
+    if is_greeting(user_message) and SESSIONS.get(from_number, {}).get("stage", "idle") == "idle":
+        enviar_texto(from_number, "¡Hola! ¿Cómo puedo ayudarte hoy? ¿Buscas información de financiamiento o quieres conocer la propiedad disponible?")
         return "OK", 200
 
-    # 2) Flujo de agendado (nombre → email → disponibilidad → cierre + trigger)
+    # 1) Fotos del producto (forzando 1 imagen por limitación actual)
+    if want_photos(user_message):
+        caption = f"{PRODUCTO['descripcion']}\n\n¿Te gustaría agendar una visita?"
+        primera = [PRODUCTO["imagenes"][0]]
+        enviar_texto_con_imagenes_album(from_number, caption, primera)
+        return "OK", 200
+
+    # 2) Flujo de agenda (nombre → email → disponibilidad → cierre + trigger)
     if handle_visit_flow(from_number, user_message, phone):
         return "OK", 200
 
