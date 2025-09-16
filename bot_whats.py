@@ -240,12 +240,10 @@ def whatsapp_bot():
     # 2) Flujo de agenda (nombre → email → disponibilidad → cierre + trigger)
     if handle_visit_flow(from_number, user_message, phone):
         return "OK", 200
-
-    # 3) Respuesta normal con IA (texto)
+    # 3) Respuesta normal con IA (vía REST, no TwiML)
     respuesta_texto = get_ai_reply(user_message)
-    resp = MessagingResponse()
-    resp.message(respuesta_texto)
-    return str(resp), 200
+    enviar_texto(from_number, respuesta_texto)
+    return "OK", 200
 
 # ===== Status callback de Twilio (ver en Railway Logs y archivo) =====
 @app.route("/twilio-status", methods=["POST"])
