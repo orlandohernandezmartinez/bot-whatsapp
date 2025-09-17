@@ -4,84 +4,93 @@ from time import sleep
 from dotenv import load_dotenv
 from flask import Flask, request
 from twilio.rest import Client
-from twilio.twiml.messaging_response import MessagingResponse
 import openai
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail, Email, To, Cc, Content
 
-# ============== ENV ==============
+# ================== ENV ==================
 load_dotenv()
+
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
-TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER")   # ej: 'whatsapp:+14155238886'
-STATUS_CALLBACK_URL = os.environ.get("STATUS_CALLBACK_URL")         # ej: 'https://tuapp.railway.app/twilio-status'
+TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER")  # 'whatsapp:+14155238886' en Sandbox
+
+STATUS_CALLBACK_URL = os.environ.get("STATUS_CALLBACK_URL")  # ej: https://tuapp.railway.app/twilio-status
+
+# SendGrid
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY")
+LEADS_NOTIFY_TO = os.environ.get("LEADS_NOTIFY_TO")                # asesor@tudominio.com
+LEADS_NOTIFY_FROM = os.environ.get("LEADS_NOTIFY_FROM", "bot@tudominio.com")
+LEADS_NOTIFY_CC = os.environ.get("LEADS_NOTIFY_CC", "")            # opcional, coma-separado
 
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-# ============== LOGGING ==============
+# ================== LOGGING ==================
 logger = logging.getLogger("coinsa-bot")
 logger.setLevel(logging.INFO)
-# Consola
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-logger.addHandler(console_handler)
-# Archivo (en Railway se guarda en el contenedor; útil para inspección rápida)
 file_handler = RotatingFileHandler("twilio_status.log", maxBytes=1_000_000, backupCount=3)
-file_handler.setLevel(logging.INFO)
-logger.addHandler(file_handler)
+logger.addHandler(console_handler); logger.addHandler(file_handler)
 
-# ============== PROMPT (refinado) ==============
+# ================== PROMPT ==================
 PROMPT = """
-Eres un asistente inmobiliario digital de COINSA (SOFOM ENR, NL). Sé claro, amable y breve (máx. 50 palabras).
+Eres un asistente inmobiliario digital de COINSA (SOFOM ENR, NL). Sé claro, amable y breve (máx. 55 palabras).
 
-Hecho importante: actualmente SOLO hay UNA propiedad disponible. No digas ni insinúes que hay varias.
-
-Flujo:
-- Si saludan: saluda y pregunta cómo ayudar (no presentes aún la propiedad).
-- Si preguntan por propiedades disponibles, lista o inventario: responde directamente con la única opción disponible (Pent House zona Tec: 2 habitaciones, 2 baños completos, terraza privada, sala y comedor) y ofrece enviar fotos o agendar visita.
-- Si piden fotos: envía y pregunta si desean agendar.
-- Para agendar: pide nombre y correo; el teléfono es el de este chat.
-- Evita bloques de contacto salvo que lo pidan explícitamente.
+Reglas:
+- Si preguntan por propiedades/informes de propiedades, primero pregunta si busca COMPRAR o RENTAR (no inventes más categorías).
+- Si dice COMPRAR: ofrece el edificio en Puerto Escondido, Oaxaca: 4 pisos, 8 departamentos, valor $800,000 USD.
+- Si dice RENTAR: ofrece el Pent House en zona Tec: 2 habitaciones, 2 baños completos, terraza privada, sala y comedor.
+- Si piden fotos: avisa que puedes enviar una foto y pregunta si desea agendar visita.
+- Para agendar: solicita nombre y correo; el teléfono es el de este chat.
+- Mantén tono profesional, sin bloques de contacto salvo que lo pidan.
 """
 
-# ============== PRODUCTO ==============
-PRODUCTO = {
-    "nombre": "pent house zona tec",
-    "descripcion": "Pent House en zona Tec: 2 habitaciones, 2 baños completos, terraza privada, sala y comedor.",
-    "imagenes": [
-
-        "https://res.cloudinary.com/dafozmwvq/image/upload/v1757644414/comedor_pjbxyq.jpg",
-        "https://res.cloudinary.com/dafozmwvq/image/upload/v1757644419/habitacion_f6xchz.jpg"
-    ]
+# ================== PRODUCTOS ==================
+PRODUCTOS = {
+    "renta": {
+        "nombre": "pent house zona tec (renta)",
+        "descripcion": "Pent House en zona Tec: 2 habitaciones, 2 baños completos, terraza privada, sala y comedor.",
+        "imagenes": [
+            "https://res.cloudinary.com/dafozmwvq/image/upload/v1757644414/comedor_pjbxyq.jpg"
+        ]
+    },
+    "venta": {
+        "nombre": "edificio 4 pisos · 8 deptos (venta) – Puerto Escondido, Oaxaca",
+        "descripcion": "Edificio en Puerto Escondido, Oaxaca: 4 pisos, 8 departamentos. Precio: $800,000 USD.",
+        "imagenes": [
+            "https://res.cloudinary.com/dafozmwvq/image/upload/v1758054049/fachada_tninqu.jpg"
+        ]
+    }
 }
 
-# ============== SESIONES (RAM; usa Redis/DB en prod) ==============
-# stage: idle | ask_name | ask_email | ask_when | closed
-SESSIONS = {}  # { from_number: {stage, name, email, when, ready_to_notify}}
+# ================== SESIONES ==================
+# stage: idle | choose_mode | ask_name | ask_email | ask_when | closed
+# mode: "renta" | "venta" | None
+SESSIONS = {}  # { from_number: {stage, mode, name, email, when, ready_to_notify}}
 
 def ensure_session(num: str):
     return SESSIONS.setdefault(num, {
         "stage":"idle",
+        "mode":None,
         "name":None,
         "email":None,
         "when":None,
         "ready_to_notify":False
     })
 
-# ============== HELPERS ==============
+# ================== HELPERS ==================
 def optimize(url: str) -> str:
-    # Fuerza JPG, compresión automática y ancho razonable para WhatsApp
+    # Fuerza JPG comprimido y ancho razonable para WhatsApp
     return url.replace("/upload/", "/upload/f_jpg,q_auto,w_1280/")
 
 def get_ai_reply(user_message: str) -> str:
     try:
         r = openai.chat.completions.create(
             model="gpt-4",
-            messages=[
-                {"role":"system","content":PROMPT},
-                {"role":"user","content":user_message}
-            ],
+            messages=[{"role":"system","content":PROMPT},{"role":"user","content":user_message}],
             temperature=0.3,
             max_tokens=180
         )
@@ -92,30 +101,20 @@ def get_ai_reply(user_message: str) -> str:
 
 def enviar_texto(to_number: str, body: str):
     try:
-        msg = twilio_client.messages.create(
-            from_=TWILIO_WHATSAPP_NUMBER,
-            to=to_number,
-            body=body
-        )
+        kwargs = dict(from_=TWILIO_WHATSAPP_NUMBER, to=to_number, body=body)
+        if STATUS_CALLBACK_URL: kwargs["status_callback"] = STATUS_CALLBACK_URL
+        msg = twilio_client.messages.create(**kwargs)
         logger.info(f"✅ Texto SID={msg.sid}")
     except Exception as e:
         logger.exception(f"Twilio texto error: {e}")
 
-def enviar_texto_con_imagen_una(to_number: str, body: str, url: str):
-    # Envía UNA imagen optimizada + caption
+def enviar_imagen(to_number: str, body: str, url: str):
     try:
         url_opt = optimize(url)
-        logger.info(f"🖼️ Enviando imagen: {url_opt}")
-        kwargs = dict(
-            from_=TWILIO_WHATSAPP_NUMBER,
-            to=to_number,
-            body=body,
-            media_url=[url_opt]
-        )
-        if STATUS_CALLBACK_URL:
-            kwargs["status_callback"] = STATUS_CALLBACK_URL
+        kwargs = dict(from_=TWILIO_WHATSAPP_NUMBER, to=to_number, body=body, media_url=[url_opt])
+        if STATUS_CALLBACK_URL: kwargs["status_callback"] = STATUS_CALLBACK_URL
         msg = twilio_client.messages.create(**kwargs)
-        logger.info(f"✅ Texto+Imagen SID={msg.sid}")
+        logger.info(f"✅ Texto+Imagen SID={msg.sid} -> {url_opt}")
     except Exception as e:
         logger.exception(f"Twilio media error: {e}")
 
@@ -125,45 +124,93 @@ def extract_phone(whatsapp_from: str) -> str:
 def looks_like_email(text: str) -> bool:
     return bool(re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text))
 
-def want_photos(text: str) -> bool:
-    t = text.lower()
-    triggers = [
-        "foto","fotos","imagen","imágenes","imagenes",
-        "ver producto","ver fotos","a ver las fotos",
-        "quiero ver las fotos","enséñame","enseñame","mándame","mandame"
-    ]
-    hit = any(k in t for k in triggers)
-    logger.info(f"🔎 want_photos={hit} | '{t}'")
-    return hit
-
-def want_visit(text: str) -> bool:
-    t = text.lower()
-    triggers = ["agendar","agenda","visita","cita","tour","recorrido","verlo","ver la propiedad","quiero ver"]
-    return any(k in t for k in triggers)
-
-def want_listings(text: str) -> bool:
-    t = text.lower().strip()
-    triggers = [
-        "qué propiedades tienes","que propiedades tienes","propiedades disponibles",
-        "qué tienes","que tienes","qué propiedades","inventario","lista de propiedades",
-        "que inmuebles tienes","inmuebles disponibles"
-    ]
-    return any(k in t for k in triggers)
-
 def is_greeting(text: str) -> bool:
     t = text.strip().lower()
     return any(t.startswith(x) for x in ["hola","buenas","buen día","buen dia","hey","holi"]) or t in {"hi","hello","saludos"}
 
-# Hook para notificar al cerrar lead (integra SendGrid aquí)
+def want_listings(text: str) -> bool:
+    t = text.lower()
+    keys = ["propiedades", "propiedad", "informes", "información de propiedades", "qué propiedades", "que propiedades", "inventario", "disponible", "disponibles"]
+    return any(k in t for k in keys)
+
+def parse_mode(text: str) -> str | None:
+    t = text.lower()
+    if "renta" in t or "rentar" in t or "alqu" in t: return "renta"
+    if "compra" in t or "comprar" in t or "venta" in t or "vender" in t: return "venta"
+    return None
+
+def want_photos(text: str) -> bool:
+    t = text.lower()
+    keys = ["foto","fotos","imagen","imágenes","imagenes","ver fotos","a ver las fotos","quiero ver las fotos","enséñame","enseñame"]
+    return any(k in t for k in keys)
+
+def want_visit(text: str) -> bool:
+    t = text.lower()
+    keys = ["agendar","agenda","visita","cita","tour","recorrido","verlo","ver la propiedad","quiero ver"]
+    return any(k in t for k in keys)
+
+# ================== SENDGRID ==================
+def enviar_correo_lead(nombre: str, email: str, phone: str, propiedad: str, when_str: str | None):
+    if not SENDGRID_API_KEY or not LEADS_NOTIFY_TO:
+        logger.warning("⚠️ SendGrid no configurado: faltan SENDGRID_API_KEY o LEADS_NOTIFY_TO")
+        return
+    try:
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        to_list = [To(LEADS_NOTIFY_TO)]
+        cc_list = [Cc(a.strip()) for a in LEADS_NOTIFY_CC.split(",") if a.strip()] if LEADS_NOTIFY_CC else None
+        from_email = Email(LEADS_NOTIFY_FROM)
+
+        subject = f"Nuevo lead – {propiedad}"
+        phone_safe = phone
+
+        when_html = f"<p><b>Horario preferido:</b> {when_str}</p>" if when_str else ""
+        when_txt  = f"Horario preferido: {when_str}\n" if when_str else ""
+
+        html = f"""
+        <h2>Nuevo lead</h2>
+        <p><b>Propiedad:</b> {propiedad}</p>
+        <p><b>Nombre:</b> {nombre}</p>
+        <p><b>Email:</b> <a href="mailto:{email}">{email}</a></p>
+        <p><b>Teléfono (WhatsApp):</b> <a href="tel:{phone_safe}">{phone_safe}</a></p>
+        {when_html}
+        <hr>
+        <p>Acción sugerida: contactar y confirmar visita.</p>
+        """
+
+        text = (
+            f"Nuevo lead\n"
+            f"Propiedad: {propiedad}\n"
+            f"Nombre: {nombre}\n"
+            f"Email: {email}\n"
+            f"Teléfono (WhatsApp): {phone_safe}\n"
+            f"{when_txt}"
+            f"Acción: contactar y confirmar visita.\n"
+        )
+
+        message = Mail(from_email=from_email, to_emails=to_list, subject=subject, html_content=html)
+        if cc_list:
+            for c in cc_list: message.add_cc(c)
+        message.add_content(Content("text/plain", text))
+        sg.send(message)
+        logger.info("✅ Email de lead enviado al asesor.")
+    except Exception as e:
+        logger.exception(f"❌ Error al enviar correo de lead: {e}")
+
 def on_lead_ready(nombre: str, email: str, phone: str, propiedad: str, when_str: str | None):
     logger.info(f"🔔 Lead listo: {nombre} | {email} | {phone} | {propiedad} | {when_str}")
-    # TODO: Integrar SendGrid aquí (enviar_correo_lead(nombre, email, phone, propiedad, when_str))
+    enviar_correo_lead(nombre, email, phone, propiedad, when_str)
 
-# ============== STATE MACHINE: agendar visita ==============
+# ================== STATE MACHINE (agendar) ==================
 def handle_visit_flow(from_number: str, user_message: str, phone: str) -> bool:
     s = ensure_session(from_number)
 
-    if s["stage"] == "idle" and want_visit(user_message):
+    # Inicio explícito
+    if s["stage"] in ("idle","choose_mode") and want_visit(user_message):
+        # si no eligió modo, pídelo primero
+        if not s["mode"]:
+            s["stage"] = "choose_mode"
+            enviar_texto(from_number, "¿Quieres COMPRAR o RENTAR?")
+            return True
         s["stage"] = "ask_name"
         enviar_texto(from_number, "Excelente. Para agendar la visita, ¿me compartes tu nombre completo?")
         return True
@@ -192,14 +239,13 @@ def handle_visit_flow(from_number: str, user_message: str, phone: str) -> bool:
         return True
 
     if s["stage"] == "ask_when":
-        # Guarda literal la preferencia de horario y cierra
-        when_str = user_message.strip()
-        s["when"] = when_str
+        s["when"] = user_message.strip()
         s["stage"] = "closed"
         s["ready_to_notify"] = True
-
         enviar_texto(from_number, "Excelente, un asesor se pondrá en contacto contigo para coordinar la visita.")
-        on_lead_ready(s["name"], s["email"], phone, PRODUCTO["nombre"], s["when"])
+        # Propiedad según modo
+        prop_name = PRODUCTOS[s["mode"]]["nombre"] if s["mode"] in PRODUCTOS else "propiedad"
+        on_lead_ready(s["name"], s["email"], phone, prop_name, s["when"])
         return True
 
     if s["stage"] == "closed":
@@ -207,7 +253,7 @@ def handle_visit_flow(from_number: str, user_message: str, phone: str) -> bool:
 
     return False
 
-# ============== FLASK ==============
+# ================== FLASK ==================
 app = Flask(__name__)
 
 @app.route("/whatsapp", methods=["POST"])
@@ -215,61 +261,67 @@ def whatsapp_bot():
     user_message = request.form.get("Body", "")
     from_number = request.form.get("From", "")
     phone = extract_phone(from_number)
+    s = ensure_session(from_number)
 
     logger.info(f"📩 {from_number}: {user_message}")
 
-    # 0) Saludo inicial -> solo pregunta cómo ayudar
-    if is_greeting(user_message) and SESSIONS.get(from_number, {}).get("stage", "idle") == "idle":
-        enviar_texto(from_number, "¡Hola! ¿Cómo puedo ayudarte hoy? ¿Buscas información de financiamiento o quieres conocer la propiedad disponible?")
+    # 0) Saludo: siempre responde y resetea sesión
+    if is_greeting(user_message):
+        SESSIONS[from_number] = {"stage":"idle","mode":None,"name":None,"email":None,"when":None,"ready_to_notify":False}
+        enviar_texto(from_number, "¡Hola! ¿Cómo puedo ayudarte hoy? ¿Buscas información de financiamiento o informes de propiedades?")
         return "OK", 200
 
-    # 0.5) Preguntan por inventario -> responde con la única propiedad y CTA
+    # 0.5) Piden informes/propiedades -> pedir COMPRAR o RENTAR
     if want_listings(user_message):
-        enviar_texto(from_number, PRODUCTO["descripcion"])
+        s["stage"] = "choose_mode"
+        enviar_texto(from_number, "Claro. ¿Te interesa COMPRAR o RENTAR?")
+        return "OK", 200
+
+    # 0.6) Responden modo explícito
+    detected_mode = parse_mode(user_message)
+    if s["stage"] in ("idle","choose_mode") and detected_mode:
+        s["mode"] = detected_mode
+        s["stage"] = "idle"  # vuelve a flujo normal
+        prod = PRODUCTOS[detected_mode]
+        enviar_texto(from_number, f"{prod['descripcion']}")
         sleep(0.3)
-        enviar_texto(from_number, "¿Quieres ver fotos o prefieres agendar una visita?")
+        enviar_texto(from_number, "¿Quieres ver una foto o prefieres agendar una visita?")
         return "OK", 200
 
-    # 1) Fotos del producto (UNA imagen por ahora)
+    # 1) Fotos (según modo)
     if want_photos(user_message):
-        caption = f"{PRODUCTO['descripcion']}\n\n¿Te gustaría agendar una visita?"
-        primera_url = PRODUCTO["imagenes"][0]
-        enviar_texto_con_imagen_una(from_number, caption, primera_url)
+        mode = s["mode"] or "renta"  # si no eligió, muestra renta por defecto
+        prod = PRODUCTOS.get(mode)
+        if prod and prod["imagenes"]:
+            caption = f"{prod['descripcion']}\n\n¿Te gustaría agendar una visita?"
+            enviar_imagen(from_number, caption, prod["imagenes"][0])
+        else:
+            enviar_texto(from_number, f"{prod['descripcion'] if prod else 'Propiedad'}\n\nPor ahora sin imagen. ¿Agendamos visita?")
         return "OK", 200
 
-    # 2) Flujo de agenda (nombre → email → disponibilidad → cierre + trigger)
+    # 2) Flujo de agenda (nombre → email → horario → cierre + email)
     if handle_visit_flow(from_number, user_message, phone):
         return "OK", 200
-    # 3) Respuesta normal con IA (vía REST, no TwiML)
+
+    # 3) IA por defecto
     respuesta_texto = get_ai_reply(user_message)
     enviar_texto(from_number, respuesta_texto)
     return "OK", 200
 
-# ===== Status callback de Twilio (ver en Railway Logs y archivo) =====
+# ===== Status callback para delivery de Twilio =====
 @app.route("/twilio-status", methods=["POST"])
 def twilio_status():
-    payload = dict(request.form)
-    logger.info(f"📬 Status callback: {payload}")
+    logger.info(f"📬 Status callback: {dict(request.form)}")
     return "OK", 200
 
-# ===== Endpoint de prueba para media canónica =====
+# ===== Test media canónica =====
 @app.route("/test-media", methods=["POST"])
 def test_media():
-    # Twilio enviará 'From' cuando esto se use como webhook; si no, puedes pasar 'to' por query/form en pruebas manuales
     to = request.form.get("From") or request.values.get("to")
-    if not to:
-        return "Falta 'From' (WhatsApp) o 'to' para pruebas", 400
-
+    if not to: return "Falta 'From' o 'to'", 400
     url = "https://demo.twilio.com/owl.png"
-    logger.info(f"🧪 Test media -> {url} to {to}")
-    kwargs = dict(
-        from_=TWILIO_WHATSAPP_NUMBER,
-        to=to,
-        body="Prueba media",
-        media_url=[url]
-    )
-    if STATUS_CALLBACK_URL:
-        kwargs["status_callback"] = STATUS_CALLBACK_URL
+    kwargs = dict(from_=TWILIO_WHATSAPP_NUMBER, to=to, body="Prueba media", media_url=[url])
+    if STATUS_CALLBACK_URL: kwargs["status_callback"] = STATUS_CALLBACK_URL
     msg = twilio_client.messages.create(**kwargs)
     logger.info(f"🧪 Test media SID={msg.sid}")
     return "OK", 200
