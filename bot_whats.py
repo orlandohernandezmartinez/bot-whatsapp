@@ -282,8 +282,8 @@ def whatsapp_bot():
     # 0.6) Responden modo explícito
     detected_mode = parse_mode(user_message)
     if s["stage"] in ("idle", "choose_mode") and detected_mode:
-    s["mode"] = detected_mode
-    s["stage"] = "idle"
+          s["mode"] = detected_mode
+          s["stage"] = "idle"
 
     if detected_mode == "venta":
         msg = (
