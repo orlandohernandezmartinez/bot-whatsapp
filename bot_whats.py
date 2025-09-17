@@ -281,16 +281,20 @@ def whatsapp_bot():
 
     # 0.6) Responden modo explícito
     detected_mode = parse_mode(user_message)
-    if s["stage"] in ("idle","choose_mode") and detected_mode:
+    if s["stage"] in ("idle", "choose_mode") and detected_mode:
     s["mode"] = detected_mode
     s["stage"] = "idle"
 
     if detected_mode == "venta":
-        msg = ("¡Con gusto! Te comparto la opción disponible: un edificio en Puerto Escondido, Oaxaca, "
-               "con 4 pisos y 8 departamentos. El precio es de 800,000 USD.")
+        msg = (
+            "¡Con gusto! Te comparto la opción disponible: un edificio en Puerto Escondido, Oaxaca, "
+            "con 4 pisos y 8 departamentos. El precio es de 800,000 USD."
+        )
     else:  # renta
-        msg = ("¡Perfecto! Tenemos disponible un Pent House en la zona Tec con 2 habitaciones, "
-               "2 baños completos, terraza privada, sala y comedor.")
+        msg = (
+            "¡Perfecto! Tenemos disponible un Pent House en la zona Tec con 2 habitaciones, "
+            "2 baños completos, terraza privada, sala y comedor."
+        )
 
     enviar_texto(from_number, msg)
     sleep(0.3)
