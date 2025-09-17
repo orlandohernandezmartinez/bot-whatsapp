@@ -37,15 +37,17 @@ logger.addHandler(console_handler); logger.addHandler(file_handler)
 
 # ================== PROMPT ==================
 PROMPT = """
-Eres un asistente inmobiliario digital de COINSA (SOFOM ENR, NL). Sé claro, amable y breve (máx. 55 palabras).
+Eres un asistente inmobiliario digital de COINSA (SOFOM ENR, NL). Sé claro, cordial y breve (máx. 60 palabras).
 
 Reglas:
-- Si preguntan por propiedades/informes de propiedades, primero pregunta si busca COMPRAR o RENTAR (no inventes más categorías).
-- Si dice COMPRAR: ofrece el edificio en Puerto Escondido, Oaxaca: 4 pisos, 8 departamentos, valor $800,000 USD.
-- Si dice RENTAR: ofrece el Pent House en zona Tec: 2 habitaciones, 2 baños completos, terraza privada, sala y comedor.
-- Si piden fotos: avisa que puedes enviar una foto y pregunta si desea agendar visita.
-- Para agendar: solicita nombre y correo; el teléfono es el de este chat.
-- Mantén tono profesional, sin bloques de contacto salvo que lo pidan.
+- Si piden informes/propiedades, primero pregunta si busca COMPRAR o RENTAR.
+- Si elige COMPRAR, responde con un tono amable y humano, por ejemplo:
+  "¡Con gusto! Te comparto la opción disponible: un edificio en Puerto Escondido, Oaxaca, con 4 pisos y 8 departamentos. El precio es de 800,000 USD."
+- Si elige RENTAR, responde en tono similar:
+  "¡Perfecto! Tenemos disponible un Pent House en la zona Tec con 2 habitaciones, 2 baños completos, terraza privada, sala y comedor."
+- Si piden fotos, indica que puedes enviar una foto y sugiere agendar visita.
+- Para agendar visita: pide nombre y correo; el teléfono es el de este chat.
+- No incluyas bloques de contacto a menos que lo pidan explícitamente.
 """
 
 # ================== PRODUCTOS ==================
@@ -280,20 +282,27 @@ def whatsapp_bot():
     # 0.6) Responden modo explícito
     detected_mode = parse_mode(user_message)
     if s["stage"] in ("idle","choose_mode") and detected_mode:
-        s["mode"] = detected_mode
-        s["stage"] = "idle"  # vuelve a flujo normal
-        prod = PRODUCTOS[detected_mode]
-        enviar_texto(from_number, f"{prod['descripcion']}")
-        sleep(0.3)
-        enviar_texto(from_number, "¿Quieres ver una foto o prefieres agendar una visita?")
-        return "OK", 200
+    s["mode"] = detected_mode
+    s["stage"] = "idle"
+
+    if detected_mode == "venta":
+        msg = ("¡Con gusto! Te comparto la opción disponible: un edificio en Puerto Escondido, Oaxaca, "
+               "con 4 pisos y 8 departamentos. El precio es de 800,000 USD.")
+    else:  # renta
+        msg = ("¡Perfecto! Tenemos disponible un Pent House en la zona Tec con 2 habitaciones, "
+               "2 baños completos, terraza privada, sala y comedor.")
+
+    enviar_texto(from_number, msg)
+    sleep(0.3)
+    enviar_texto(from_number, "¿Quieres ver una foto o prefieres agendar una visita?")
+    return "OK", 200
 
     # 1) Fotos (según modo)
     if want_photos(user_message):
         mode = s["mode"] or "renta"  # si no eligió, muestra renta por defecto
         prod = PRODUCTOS.get(mode)
         if prod and prod["imagenes"]:
-            caption = f"{prod['descripcion']}\n\n¿Te gustaría agendar una visita?"
+            caption = "¿Te gustaría agendar una visita?"
             enviar_imagen(from_number, caption, prod["imagenes"][0])
         else:
             enviar_texto(from_number, f"{prod['descripcion'] if prod else 'Propiedad'}\n\nPor ahora sin imagen. ¿Agendamos visita?")
