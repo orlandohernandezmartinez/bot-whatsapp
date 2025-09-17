@@ -254,23 +254,30 @@ def handle_visit_flow(from_number: str, user_message: str, phone: str) -> bool:
         return True
 
     return False
-
+  
 # ================== FLASK ==================
 app = Flask(__name__)
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_bot():
-    user_message = request.form.get("Body", "")
-    from_number = request.form.get("From", "")
+    user_message = request.form.get("Body", "") or ""
+    from_number = request.form.get("From", "") or ""
     phone = extract_phone(from_number)
     s = ensure_session(from_number)
 
     logger.info(f"📩 {from_number}: {user_message}")
+    logger.info(f"🧭 state: stage={s['stage']} mode={s['mode']}")
 
     # 0) Saludo: siempre responde y resetea sesión
     if is_greeting(user_message):
-        SESSIONS[from_number] = {"stage":"idle","mode":None,"name":None,"email":None,"when":None,"ready_to_notify":False}
-        enviar_texto(from_number, "¡Hola! ¿Cómo puedo ayudarte hoy? ¿Buscas información de financiamiento o informes de propiedades?")
+        SESSIONS[from_number] = {
+            "stage": "idle", "mode": None, "name": None, "email": None,
+            "when": None, "ready_to_notify": False
+        }
+        enviar_texto(
+            from_number,
+            "¡Hola! ¿Cómo puedo ayudarte hoy? ¿Buscas información de financiamiento o informes de propiedades?"
+        )
         return "OK", 200
 
     # 0.5) Piden informes/propiedades -> pedir COMPRAR o RENTAR
@@ -279,36 +286,40 @@ def whatsapp_bot():
         enviar_texto(from_number, "Claro. ¿Te interesa COMPRAR o RENTAR?")
         return "OK", 200
 
-    # 0.6) Responden modo explícito
-detected_mode = parse_mode(user_message)
-if s["stage"] in ("idle", "choose_mode") and detected_mode:
-    s["mode"] = detected_mode
-    s["stage"] = "idle"
+    # 0.6) Responden modo explícito (comprar/rentar)
+    detected_mode = parse_mode(user_message)
+    if s["stage"] in ("idle", "choose_mode") and detected_mode:
+        s["mode"] = detected_mode
+        s["stage"] = "idle"
 
-    if detected_mode == "venta":
-        msg = (
-            "¡Con gusto! Te comparto la opción disponible: un edificio en Puerto Escondido, Oaxaca, "
-            "con 4 pisos y 8 departamentos. El precio es de 800,000 USD."
-        )
-    else:  # renta
-        msg = (
-            "¡Perfecto! Tenemos disponible un Pent House en la zona Tec con 2 habitaciones, "
-            "2 baños completos, terraza privada, sala y comedor."
-        )
+        if detected_mode == "venta":
+            msg = (
+                "¡Con gusto! Te comparto la opción disponible: un edificio en Puerto Escondido, Oaxaca, "
+                "con 4 pisos y 8 departamentos. El precio es de 800,000 USD."
+            )
+        else:  # renta
+            msg = (
+                "¡Perfecto! Tenemos disponible un Pent House en la zona Tec con 2 habitaciones, "
+                "2 baños completos, terraza privada, sala y comedor."
+            )
 
-    enviar_texto(from_number, msg)
-    sleep(0.3)
-    enviar_texto(from_number, "¿Quieres ver una foto o prefieres agendar una visita?")
+        enviar_texto(from_number, msg)
+        sleep(0.3)
+        enviar_texto(from_number, "¿Quieres ver una foto o prefieres agendar una visita?")
+        return "OK", 200
 
     # 1) Fotos (según modo)
     if want_photos(user_message):
-        mode = s["mode"] or "renta"  # si no eligió, muestra renta por defecto
+        mode = s["mode"] or "renta"   # por defecto renta si no eligió
         prod = PRODUCTOS.get(mode)
         if prod and prod["imagenes"]:
             caption = "¿Te gustaría agendar una visita?"
             enviar_imagen(from_number, caption, prod["imagenes"][0])
         else:
-            enviar_texto(from_number, f"{prod['descripcion'] if prod else 'Propiedad'}\n\nPor ahora sin imagen. ¿Agendamos visita?")
+            enviar_texto(
+                from_number,
+                f"{(prod['descripcion'] if prod else 'Propiedad')}\n\nPor ahora sin imagen. ¿Agendamos visita?"
+            )
         return "OK", 200
 
     # 2) Flujo de agenda (nombre → email → horario → cierre + email)
@@ -319,7 +330,6 @@ if s["stage"] in ("idle", "choose_mode") and detected_mode:
     respuesta_texto = get_ai_reply(user_message)
     enviar_texto(from_number, respuesta_texto)
     return "OK", 200
-
 # ===== Status callback para delivery de Twilio =====
 @app.route("/twilio-status", methods=["POST"])
 def twilio_status():
