@@ -23,7 +23,7 @@ STATUS_CALLBACK_URL = os.environ.get("STATUS_CALLBACK_URL")  # ej: https://tuapp
 # SendGrid
 SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY")
 LEADS_NOTIFY_TO = os.environ.get("LEADS_NOTIFY_TO")                # asesor@tudominio.com
-LEADS_NOTIFY_FROM = os.environ.get("LEADS_NOTIFY_FROM", "bot@tudominio.com")
+LEADS_NOTIFY_FROM = os.environ.get("LEADS_NOTIFY_FROM", "orlando@vacacapital.com")
 LEADS_NOTIFY_CC = os.environ.get("LEADS_NOTIFY_CC", "")            # opcional, coma-separado
 
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
