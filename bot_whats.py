@@ -299,7 +299,6 @@ if s["stage"] in ("idle", "choose_mode") and detected_mode:
     enviar_texto(from_number, msg)
     sleep(0.3)
     enviar_texto(from_number, "¿Quieres ver una foto o prefieres agendar una visita?")
-    return "OK", 200
 
     # 1) Fotos (según modo)
     if want_photos(user_message):
