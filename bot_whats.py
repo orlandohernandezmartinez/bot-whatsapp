@@ -16,19 +16,20 @@ openai.api_key = OPENAI_API_KEY
 
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
-TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER")
+TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER")  # 'whatsapp:+14155238886' en Sandbox
 
-STATUS_CALLBACK_URL = os.environ.get("STATUS_CALLBACK_URL")
+STATUS_CALLBACK_URL = os.environ.get("STATUS_CALLBACK_URL")  # ej: https://tuapp.railway.app/twilio-status
 
+# SendGrid
 SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY")
-LEADS_NOTIFY_TO = os.environ.get("LEADS_NOTIFY_TO")
-LEADS_NOTIFY_FROM = os.environ.get("LEADS_NOTIFY_FROM", "info@montessorixaltepec.edu.mx")
-LEADS_NOTIFY_CC = os.environ.get("LEADS_NOTIFY_CC", "")
+LEADS_NOTIFY_TO = os.environ.get("LEADS_NOTIFY_TO")                # asesor@tudominio.com
+LEADS_NOTIFY_FROM = os.environ.get("LEADS_NOTIFY_FROM", "orlando@vacacapital.com")
+LEADS_NOTIFY_CC = os.environ.get("LEADS_NOTIFY_CC", "")            # opcional, coma-separado
 
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
 # ================== LOGGING ==================
-logger = logging.getLogger("montessori-bot")
+logger = logging.getLogger("coinsa-bot")
 logger.setLevel(logging.INFO)
 console_handler = logging.StreamHandler()
 file_handler = RotatingFileHandler("twilio_status.log", maxBytes=1_000_000, backupCount=3)
@@ -36,125 +37,46 @@ logger.addHandler(console_handler); logger.addHandler(file_handler)
 
 # ================== PROMPT ==================
 PROMPT = """
-Eres el asistente digital de admisiones de la Escuela Montessori Xaltepec. Tu función es informar con claridad y cordialidad a los padres de familia sobre el colegio y ayudarlos a agendar una visita.  
-Responde siempre de forma amable, precisa y breve (máximo 80 palabras). No inventes datos ni redacciones poéticas.
+Eres un asistente inmobiliario digital de COINSA (SOFOM ENR, NL). Sé claro, cordial y breve (máx. 60 palabras).
 
-Información oficial Montessori Xaltepec:
-
-Niveles educativos:
-• Comunidad Infantil (Maternal)
-• Casa de los Niños (Preescolar)
-• Taller 1 (Primaria 1°, 2° y 3°)
-• Taller 2 (Primaria 4°, 5° y 6°)
-• Comunidad de Adolescentes (Secundaria)
-
- Horarios:
-• Comunidad Infantil: L–J 8:15–13:30, V 8:15–12:45  
-• Casa de los Niños: L–J 8:00–14:00, V 8:00–13:00  
-• Taller 1 y 2: L–J 7:45–14:30, V 7:45–13:30  
-• Comunidad de Adolescentes: L–J 8:00–14:40, V 8:00–13:40  
-
- Costos Secundaria (Comunidad de Adolescentes) ingreso agosto 2025:
-• Inscripción anual: $19,900 MXN  
-• Cuota anual de materiales Montessori: $4,300 MXN  
-• Cuota anual de materiales CELERM: $3,200 MXN  
-• Colegiatura mensual (septiembre a julio): $8,220 MXN  
-• Manteles: $160 MXN  
-• Uniforme: $1,050 MXN  
-
-Descuentos y beneficios:
-• 10% de descuento en inscripción si vienes de otra escuela Montessori.  
-• Bono de $2,000 en inscripción para familias referidas.  
-• Bono de $2,000 a partir del segundo hijo inscrito.  
-• Taller vespertino sin costo (fútbol, básquetbol, ajedrez, dibujo).
-
-Proceso de admisión:
-1. Entrevista con Dirección Académica + visita al plantel.  
-2. Días de visita del alumno (dos días de convivencia escolar).  
-3. Reporte final y decisión para realizar la inscripción.
-
-Incorporación SEP:
-• Renilde Montessori  
-  – Comunidad Infantil (Educación Inicial): 21PDI0065L  
-  – Casa de los Niños (Preescolar): 21PJN2055O  
-  – Taller 1 y 2 (Primaria): 21PPR1192A  
-• Mario Montessori  
-  – Comunidad de Adolescentes (Secundaria): 21PES0105B  
-
- Uniformes:
-• Comunidad Infantil no usa uniforme.  
-• En Casa de los Niños, Taller y Comunidad de Adolescentes se usa uniforme los lunes y dos días deportivos.
-
-Brunch:
-• Comunidad Infantil: comunitario semanal (los papás lo llevan).  
-• Casa de Niños y Taller: comunitario por día.  
-• Comunidad de Adolescentes: brunch individual.
-
-Supervisión y asociaciones:
-• Supervisión Académica AMI (Association Montessori Internationale).  
-• Visitas periódicas SEP.  
-• Pertenecemos a Montessori México, sociedad afiliada a AMI.
-
-Clases complementarias:
-• Inglés con certificación Cambridge (A1–B1).  
-• Montessori Sports (desarrollo físico integral).  
-• Música (inducción sensorial y expresión creativa).
-
-Comunicación oficial:
-• WhatsApp y correo electrónico.  
-• También disponible el teléfono del colegio.
-
-Padres de familia:
-• Existe una Asociación de Padres que organiza eventos como el Día de la Comunidad y conferencias.  
-• Los papás reciben talleres vivenciales mensuales sobre el método Montessori y temas actuales.
-
-Apoyos financieros:
-• Solo para alumnos que hayan cursado al menos un ciclo completo en Montessori Xaltepec.  
-• Se renuevan cada enero mediante convocatoria del Comité de Apoyos Financieros.
-
-Adaptación a otros sistemas:
-• Si el alumno cambia a una escuela tradicional, puede adaptarse sin problema gracias a su formación sólida y hábitos adquiridos.  
-
-Requisitos si proviene de un colegio tradicional:
-• Padres dispuestos a conocer el sistema Montessori.  
-• Nivel académico adecuado.  
-• Compromiso familiar con la formación del alumno.
-
-Objetivo del bot:
-- Brindar información real del colegio.
-- Orientar sobre niveles, horarios, costos, proceso de admisión y vida escolar.
-- Motivar a agendar una visita presencial.
-- Para agendar visita: pedir nombre completo, correo electrónico y día/hora preferida.
-- Responder con tono cálido y profesional.
-- Evitar imágenes, enlaces o respuestas largas.
-- Si el usuario pregunta por costos o proceso, responde directamente con esta información.
-- Si el usuario muestra interés, concluye siempre con:
-  “¿Deseas que te ayude a agendar una visita al colegio?”
+Reglas:
+- Si piden informes/propiedades, primero pregunta si busca COMPRAR o RENTAR.
+- Si elige COMPRAR, responde con un tono amable y humano, por ejemplo:
+  "¡Con gusto! Te comparto la opción disponible: un edificio en Puerto Escondido, Oaxaca, con 4 pisos y 8 departamentos. El precio es de 800,000 USD."
+- Si elige RENTAR, responde en tono similar:
+  "¡Perfecto! Tenemos disponible un Pent House en la zona Tec con 2 habitaciones, 2 baños completos, terraza privada, sala y comedor."
+- Si piden fotos, indica que puedes enviar una foto y sugiere agendar visita.
+- Para agendar visita: pide nombre y correo; el teléfono es el de este chat.
+- No incluyas bloques de contacto a menos que lo pidan explícitamente.
 """
 
-# ================== NIVELES EDUCATIVOS ==================
+# ================== PRODUCTOS ==================
 PRODUCTOS = {
-    "preescolar": {
-        "nombre": "Casa de los Niños (Preescolar)",
-        "descripcion": "Ambiente Montessori para niños de 3 a 6 años, con horario de 8:00 a 14:00 hrs."
+    "renta": {
+        "nombre": "pent house zona tec (renta)",
+        "descripcion": "Pent House en zona Tec: 2 habitaciones, 2 baños completos, terraza privada, sala y comedor.",
+        "imagenes": [
+            "https://res.cloudinary.com/dafozmwvq/image/upload/v1757644414/comedor_pjbxyq.jpg"
+        ]
     },
-    "primaria": {
-        "nombre": "Taller 1 y 2 (Primaria)",
-        "descripcion": "Formación integral Montessori para niños de 6 a 12 años, con clases de inglés, música y deportes."
-    },
-    "secundaria": {
-        "nombre": "Comunidad de Adolescentes (Secundaria)",
-        "descripcion": "Ambiente para jóvenes de 12 a 15 años, con enfoque en autonomía, trabajo en equipo y vida práctica."
+    "venta": {
+        "nombre": "edificio 4 pisos · 8 deptos (venta) – Puerto Escondido, Oaxaca",
+        "descripcion": "Edificio en Puerto Escondido, Oaxaca: 4 pisos, 8 departamentos. Precio: $800,000 USD.",
+        "imagenes": [
+            "https://res.cloudinary.com/dafozmwvq/image/upload/v1758054049/fachada_tninqu.jpg"
+        ]
     }
 }
 
 # ================== SESIONES ==================
-SESSIONS = {}  # { from_number: {stage, nivel, name, email, when, ready_to_notify}}
+# stage: idle | choose_mode | ask_name | ask_email | ask_when | closed
+# mode: "renta" | "venta" | None
+SESSIONS = {}  # { from_number: {stage, mode, name, email, when, ready_to_notify}}
 
 def ensure_session(num: str):
     return SESSIONS.setdefault(num, {
         "stage":"idle",
-        "nivel":None,
+        "mode":None,
         "name":None,
         "email":None,
         "when":None,
@@ -162,6 +84,10 @@ def ensure_session(num: str):
     })
 
 # ================== HELPERS ==================
+def optimize(url: str) -> str:
+    # Fuerza JPG comprimido y ancho razonable para WhatsApp
+    return url.replace("/upload/", "/upload/f_jpg,q_auto,w_1280/")
+
 def get_ai_reply(user_message: str) -> str:
     try:
         r = openai.chat.completions.create(
@@ -184,6 +110,16 @@ def enviar_texto(to_number: str, body: str):
     except Exception as e:
         logger.exception(f"Twilio texto error: {e}")
 
+def enviar_imagen(to_number: str, body: str, url: str):
+    try:
+        url_opt = optimize(url)
+        kwargs = dict(from_=TWILIO_WHATSAPP_NUMBER, to=to_number, body=body, media_url=[url_opt])
+        if STATUS_CALLBACK_URL: kwargs["status_callback"] = STATUS_CALLBACK_URL
+        msg = twilio_client.messages.create(**kwargs)
+        logger.info(f"✅ Texto+Imagen SID={msg.sid} -> {url_opt}")
+    except Exception as e:
+        logger.exception(f"Twilio media error: {e}")
+
 def extract_phone(whatsapp_from: str) -> str:
     return whatsapp_from.replace("whatsapp:", "") if whatsapp_from else ""
 
@@ -194,20 +130,29 @@ def is_greeting(text: str) -> bool:
     t = text.strip().lower()
     return any(t.startswith(x) for x in ["hola","buenas","buen día","buen dia","hey","holi"]) or t in {"hi","hello","saludos"}
 
-def want_visit(text: str) -> bool:
+def want_listings(text: str) -> bool:
     t = text.lower()
-    keys = ["agendar","agenda","visita","cita","tour","recorrido","ver escuela","quiero conocer","visitar"]
+    keys = ["propiedades", "propiedad", "informes", "información de propiedades", "qué propiedades", "que propiedades", "inventario", "disponible", "disponibles"]
     return any(k in t for k in keys)
 
-def parse_nivel(text: str) -> str | None:
+def parse_mode(text: str) -> str | None:
     t = text.lower()
-    if "preescolar" in t or "casa de los niños" in t: return "preescolar"
-    if "primaria" in t or "taller" in t: return "primaria"
-    if "secundaria" in t or "adolescente" in t: return "secundaria"
+    if "renta" in t or "rentar" in t or "alqu" in t: return "renta"
+    if "compra" in t or "comprar" in t or "venta" in t or "vender" in t: return "venta"
     return None
 
+def want_photos(text: str) -> bool:
+    t = text.lower()
+    keys = ["foto","fotos","imagen","imágenes","imagenes","ver fotos","a ver las fotos","quiero ver las fotos","enséñame","enseñame"]
+    return any(k in t for k in keys)
+
+def want_visit(text: str) -> bool:
+    t = text.lower()
+    keys = ["agendar","agenda","visita","cita","tour","recorrido","verlo","ver la propiedad","quiero ver"]
+    return any(k in t for k in keys)
+
 # ================== SENDGRID ==================
-def enviar_correo_lead(nombre: str, email: str, phone: str, nivel: str, when_str: str | None):
+def enviar_correo_lead(nombre: str, email: str, phone: str, propiedad: str, when_str: str | None):
     if not SENDGRID_API_KEY or not LEADS_NOTIFY_TO:
         logger.warning("⚠️ SendGrid no configurado: faltan SENDGRID_API_KEY o LEADS_NOTIFY_TO")
         return
@@ -217,29 +162,31 @@ def enviar_correo_lead(nombre: str, email: str, phone: str, nivel: str, when_str
         cc_list = [Cc(a.strip()) for a in LEADS_NOTIFY_CC.split(",") if a.strip()] if LEADS_NOTIFY_CC else None
         from_email = Email(LEADS_NOTIFY_FROM)
 
-        subject = f"Nuevo lead – {nivel}"
+        subject = f"Nuevo lead – {propiedad}"
+        phone_safe = phone
+
         when_html = f"<p><b>Horario preferido:</b> {when_str}</p>" if when_str else ""
         when_txt  = f"Horario preferido: {when_str}\n" if when_str else ""
 
         html = f"""
-        <h2>Nuevo lead de visita Montessori Xaltepec</h2>
-        <p><b>Nivel:</b> {nivel}</p>
+        <h2>Nuevo lead</h2>
+        <p><b>Propiedad:</b> {propiedad}</p>
         <p><b>Nombre:</b> {nombre}</p>
         <p><b>Email:</b> <a href="mailto:{email}">{email}</a></p>
-        <p><b>Teléfono (WhatsApp):</b> <a href="tel:{phone}">{phone}</a></p>
+        <p><b>Teléfono (WhatsApp):</b> <a href="tel:{phone_safe}">{phone_safe}</a></p>
         {when_html}
         <hr>
-        <p>Acción sugerida: contactar y confirmar visita al colegio.</p>
+        <p>Acción sugerida: contactar y confirmar visita.</p>
         """
 
         text = (
-            f"Nuevo lead de visita Montessori Xaltepec\n"
-            f"Nivel: {nivel}\n"
+            f"Nuevo lead\n"
+            f"Propiedad: {propiedad}\n"
             f"Nombre: {nombre}\n"
             f"Email: {email}\n"
-            f"Teléfono (WhatsApp): {phone}\n"
+            f"Teléfono (WhatsApp): {phone_safe}\n"
             f"{when_txt}"
-            f"Acción: contactar para confirmar visita.\n"
+            f"Acción: contactar y confirmar visita.\n"
         )
 
         message = Mail(from_email=from_email, to_emails=to_list, subject=subject, html_content=html)
@@ -251,31 +198,23 @@ def enviar_correo_lead(nombre: str, email: str, phone: str, nivel: str, when_str
     except Exception as e:
         logger.exception(f"❌ Error al enviar correo de lead: {e}")
 
-def on_lead_ready(nombre: str, email: str, phone: str, nivel: str, when_str: str | None):
-    logger.info(f"🔔 Lead listo: {nombre} | {email} | {phone} | {nivel} | {when_str}")
-    enviar_correo_lead(nombre, email, phone, nivel, when_str)
+def on_lead_ready(nombre: str, email: str, phone: str, propiedad: str, when_str: str | None):
+    logger.info(f"🔔 Lead listo: {nombre} | {email} | {phone} | {propiedad} | {when_str}")
+    enviar_correo_lead(nombre, email, phone, propiedad, when_str)
 
-# ================== STATE MACHINE ==================
+# ================== STATE MACHINE (agendar) ==================
 def handle_visit_flow(from_number: str, user_message: str, phone: str) -> bool:
     s = ensure_session(from_number)
 
-    if s["stage"] in ("idle","choose_nivel") and want_visit(user_message):
-        if not s["nivel"]:
-            s["stage"] = "choose_nivel"
-            enviar_texto(from_number, "¿Qué nivel te interesa? ¿Preescolar, Primaria o Secundaria?")
+    # Inicio explícito
+    if s["stage"] in ("idle","choose_mode") and want_visit(user_message):
+        # si no eligió modo, pídelo primero
+        if not s["mode"]:
+            s["stage"] = "choose_mode"
+            enviar_texto(from_number, "¿Quieres COMPRAR o RENTAR?")
             return True
         s["stage"] = "ask_name"
         enviar_texto(from_number, "Excelente. Para agendar la visita, ¿me compartes tu nombre completo?")
-        return True
-
-    if s["stage"] == "choose_nivel":
-        nivel = parse_nivel(user_message)
-        if nivel:
-            s["nivel"] = nivel
-            s["stage"] = "ask_name"
-            enviar_texto(from_number, "Perfecto. ¿Podrías compartirme tu nombre completo?")
-        else:
-            enviar_texto(from_number, "Por favor indícame si te interesa Preescolar, Primaria o Secundaria.")
         return True
 
     if s["stage"] == "ask_name":
@@ -285,7 +224,7 @@ def handle_visit_flow(from_number: str, user_message: str, phone: str) -> bool:
             s["stage"] = "ask_email"
             enviar_texto(from_number, "Gracias. ¿Cuál es tu correo electrónico?")
         else:
-            enviar_texto(from_number, "Compárteme tu nombre completo para continuar.")
+            enviar_texto(from_number, "Perfecto. Compárteme tu nombre completo para continuar.")
         return True
 
     if s["stage"] == "ask_email":
@@ -298,23 +237,24 @@ def handle_visit_flow(from_number: str, user_message: str, phone: str) -> bool:
                 "¿Tienes día y horario preferido?"
             )
         else:
-            enviar_texto(from_number, "Ese correo no parece válido. Escríbelo así: nombre@dominio.com")
+            enviar_texto(from_number, "Ese correo no parece válido. ¿Puedes escribirlo así: nombre@dominio.com?")
         return True
 
     if s["stage"] == "ask_when":
         s["when"] = user_message.strip()
         s["stage"] = "closed"
         s["ready_to_notify"] = True
-        enviar_texto(from_number, "Excelente, un asesor se pondrá en contacto contigo para confirmar tu visita.")
-        nivel_name = PRODUCTOS[s["nivel"]]["nombre"] if s["nivel"] in PRODUCTOS else "nivel educativo"
-        on_lead_ready(s["name"], s["email"], phone, nivel_name, s["when"])
+        enviar_texto(from_number, "Excelente, un asesor se pondrá en contacto contigo para coordinar la visita.")
+        # Propiedad según modo
+        prop_name = PRODUCTOS[s["mode"]]["nombre"] if s["mode"] in PRODUCTOS else "propiedad"
+        on_lead_ready(s["name"], s["email"], phone, prop_name, s["when"])
         return True
 
     if s["stage"] == "closed":
         return True
 
     return False
-
+  
 # ================== FLASK ==================
 app = Flask(__name__)
 
@@ -326,40 +266,86 @@ def whatsapp_bot():
     s = ensure_session(from_number)
 
     logger.info(f"📩 {from_number}: {user_message}")
-    logger.info(f"🧭 state: stage={s['stage']} nivel={s['nivel']}")
+    logger.info(f"🧭 state: stage={s['stage']} mode={s['mode']}")
 
+    # 0) Saludo: siempre responde y resetea sesión
     if is_greeting(user_message):
         SESSIONS[from_number] = {
-            "stage": "idle", "nivel": None, "name": None, "email": None,
+            "stage": "idle", "mode": None, "name": None, "email": None,
             "when": None, "ready_to_notify": False
         }
         enviar_texto(
             from_number,
-            "¡Hola! Soy el asistente de admisiones de Montessori Xaltepec. "
-            "Contamos con preescolar, primaria y secundaria. ¿Te gustaría agendar una visita para conocer nuestras instalaciones?"
+            "¡Hola! ¿Cómo puedo ayudarte hoy? ¿Buscas información de financiamiento o informes de propiedades?"
         )
         return "OK", 200
 
-    detected_nivel = parse_nivel(user_message)
-    if s["stage"] in ("idle", "choose_nivel") and detected_nivel:
-        s["nivel"] = detected_nivel
-        s["stage"] = "idle"
-        prod = PRODUCTOS.get(detected_nivel)
-        enviar_texto(from_number, f"{prod['descripcion']}")
-        sleep(0.3)
-        enviar_texto(from_number, "¿Te gustaría agendar una visita para conocer el colegio?")
+    # 0.5) Piden informes/propiedades -> pedir COMPRAR o RENTAR
+    if want_listings(user_message):
+        s["stage"] = "choose_mode"
+        enviar_texto(from_number, "Claro. ¿Te interesa COMPRAR o RENTAR?")
         return "OK", 200
 
+    # 0.6) Responden modo explícito (comprar/rentar)
+    detected_mode = parse_mode(user_message)
+    if s["stage"] in ("idle", "choose_mode") and detected_mode:
+        s["mode"] = detected_mode
+        s["stage"] = "idle"
+
+        if detected_mode == "venta":
+            msg = (
+                "¡Con gusto! Te comparto la opción disponible: un edificio en Puerto Escondido, Oaxaca, "
+                "con 4 pisos y 8 departamentos. El precio es de 800,000 USD."
+            )
+        else:  # renta
+            msg = (
+                "¡Perfecto! Tenemos disponible un Pent House en la zona Tec con 2 habitaciones, "
+                "2 baños completos, terraza privada, sala y comedor."
+            )
+
+        enviar_texto(from_number, msg)
+        sleep(0.3)
+        enviar_texto(from_number, "¿Quieres ver una foto o prefieres agendar una visita?")
+        return "OK", 200
+
+    # 1) Fotos (según modo)
+    if want_photos(user_message):
+        mode = s["mode"] or "renta"   # por defecto renta si no eligió
+        prod = PRODUCTOS.get(mode)
+        if prod and prod["imagenes"]:
+            caption = "¿Te gustaría agendar una visita?"
+            enviar_imagen(from_number, caption, prod["imagenes"][0])
+        else:
+            enviar_texto(
+                from_number,
+                f"{(prod['descripcion'] if prod else 'Propiedad')}\n\nPor ahora sin imagen. ¿Agendamos visita?"
+            )
+        return "OK", 200
+
+    # 2) Flujo de agenda (nombre → email → horario → cierre + email)
     if handle_visit_flow(from_number, user_message, phone):
         return "OK", 200
 
+    # 3) IA por defecto
     respuesta_texto = get_ai_reply(user_message)
     enviar_texto(from_number, respuesta_texto)
     return "OK", 200
-
+# ===== Status callback para delivery de Twilio =====
 @app.route("/twilio-status", methods=["POST"])
 def twilio_status():
     logger.info(f"📬 Status callback: {dict(request.form)}")
+    return "OK", 200
+
+# ===== Test media canónica =====
+@app.route("/test-media", methods=["POST"])
+def test_media():
+    to = request.form.get("From") or request.values.get("to")
+    if not to: return "Falta 'From' o 'to'", 400
+    url = "https://demo.twilio.com/owl.png"
+    kwargs = dict(from_=TWILIO_WHATSAPP_NUMBER, to=to, body="Prueba media", media_url=[url])
+    if STATUS_CALLBACK_URL: kwargs["status_callback"] = STATUS_CALLBACK_URL
+    msg = twilio_client.messages.create(**kwargs)
+    logger.info(f"🧪 Test media SID={msg.sid}")
     return "OK", 200
 
 if __name__ == "__main__":
